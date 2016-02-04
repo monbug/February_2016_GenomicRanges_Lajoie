@@ -1,0 +1,439 @@
+---
+title: "Introduction to the GenomicRanges package \n MonBUG presentation"
+author: "Mathieu.Lajoie@gmail.com"
+date: "Febuary 3, 2016"
+output:
+  ioslides_presentation:
+    css: monbug.css
+  slidy_presentation: default
+---
+
+```{r,include=FALSE}
+
+  #SET YOUR WORKING DIRECTORY HERE
+  setwd("/Users/lajoimat/Projects/GIT/lajoie_sinnett_lab/MonBug/")
+
+  #INSTALL PACKAGES IF NEEDED
+  #source("https://bioconductor.org/biocLite.R")
+  #biocLite("GenomicRanges")
+  #biocLite("TxDb.Dmelanogaster.UCSC.dm3.ensGene")
+  #biocLite("pasillaBamSubset")
+
+```
+
+## Introduction
+
++ GenomicRanges is a Bioconductor package defining general purpose containers and functions for manipulating genomic intervals and associated annotations
+
++ Time and memory efficient (can handle high-throughput sequencing data)
+
++ Many R packages dedicated to genomic analysis rely on this package
+
++ If you do your downstream analysis with R, it can spare you from going back and forward between RStudio, Perl/Python/Bedtools scripts and your intermediate results files
+
++ Authors: P. Aboyoun, H. Pagès, and M. Lawrence
+
+
+## GRanges object
+
+A GRanges object is a *vector* of genomic intervals and associated annotations. 
+
+Each element (interval) in the vector is comprised of
+
+ + a sequence name (e.g. chr1)
+ + a range (start & end)
+ + a strand (+, -, *)
+ + optional metadata columns (e.g. score, GC content, etc.).
+
+## Creating GRanges objects{.codefont}
+Lets start by creating a GRanges with a single interval.
+
+```{r,message=FALSE}
+library(GenomicRanges)
+``` 
+```{r}
+gr <- GRanges(seqnames = "chr1",
+              ranges = IRanges(50,100), 
+              strand = "+")
+gr
+```
+
+## Creating GRanges objects{.codefont}
+When providing multiple ranges, *seqnames* and *strand* are recycled by the constructor if they are not vectors.
+```{r}
+gr <- GRanges(seqnames = "chr1",
+              ranges = IRanges( 10:101, 15:106 ),strand = "-")
+gr
+```
+
+## Rle{.codefont}
+
+Rle is a simple form of lossless data compression in which runs of identical values are stored as (value ; run_length) pairs
+
+```{r}
+x = c(rep(1,50),rep(0,40),rep(1,30))
+x
+Rle(x)
+```
+
+## GRanges accessors{.codefont}
+
+start(), end(), strand(), seqnames(), length()
+
+```{r}
+length(gr)
+strand(gr)
+start(gr)[1:20]
+```
+
+
+## GRanges annotations{.codefont}
+Single *annotation* column can be set/get with $
+```{r}
+gr$score = 10:101
+gr$dataset = "TP53_ChIPseq"
+gr
+```
+
+## GRanges annotations{.codefont}
+The annotations are stored in a *DataFrame* that can be accessed with *mcols()*
+```{r}
+mcols(gr)
+```
+
+## Combining GRanges objects{.codefont}
+Just like with *base::vector*, we can use the *c()* function
+```{r,message=FALSE}
+gr.b = gr
+gr.b$dataset = "MYC_ChIPseq"
+
+gr.combined = c( gr, gr.b )
+gr.combined
+```
+
+## Transformations on GRanges objects{.codefont}
+We first create 3 GRanges objects each consisting of 20 intervals distributed around some locations (75, 200 and 275).
+```{r,message=FALSE}
+
+start.a = rnorm(n = 20, mean = 75, sd = 35) 
+start.b = rnorm(n = 20, mean = 200, sd = 20)
+start.c = rnorm(n = 20, mean = 275, sd = 15)
+
+gr.a = GRanges("seq1", IRanges(start.a, start.a + 50), "+")
+gr.b = GRanges("seq1", IRanges(start.b, start.b + 50), "-") # on minus strand
+gr.c = GRanges("seq1", IRanges(start.c, start.c + 50), "+")
+
+gr.abc = c(gr.a, gr.b, gr.c) #combined
+```
+
+## Simple plotting function{.codefont}
+We define a simple plotting function
+```{r}
+gr.plot = function(gr,xlim=range(c(start(gr),end(gr))),...){
+  #Find y lim for plotting region
+  ylim = c(0,length(gr)+2)
+
+  #Init empty plot
+  plot(0,ylim=ylim,yaxt="n",ylab="", xlab="Genomic position",col="white", xlim=xlim, ...)
+  if(length(gr)>0){
+  #Draw ranges using rect()
+  rect(start(gr), #left coordinate
+       1:length(gr), #y bottom
+       end(gr), #right coordinate
+       2:(length(gr)+1),#y top
+       col=1+as.numeric(as.factor(strand(gr))),
+       border = "black")}
+  legend("topleft",legend = c("+","-","*"),fill=2:4)
+}
+```
+
+## Our 3 GRanges objects{.codefont}
+```{r,message=FALSE}
+gr.plot(gr.abc, xlim=c(50,450))
+text(x=420,y=c(10,30,50),c("gr.a","gr.b","gr.c"),cex = 1.2)
+abline(lty=2,h=c(21,41))
+```
+
+## Intra range transformations
+These are applied to each range individually and the returned GRanges object has the same length as the input object
+
++ shift()
++ resize()
+
+## Shifting GRanges coordinates{.codefont}
+```{r}
+gr.b2 = shift(gr.b,300)
+```
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+gr.plot(gr.abc, main = "original")
+gr.plot(c(gr.a, gr.b2, gr.c), main = "shift(gr.b,300)")
+```
+
+## Resizing GRanges elements{.codefont}
+```{r}
+gr.b2 = resize(gr.b,200,"center")
+```
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+gr.plot(gr.abc,main="original")
+gr.plot(c(gr.a, gr.b2, gr.c), main = "resize(gr.b, 200,\"center\")")
+```
+
+## Inter range transformations
+These transforms all the ranges together as a set to produce a new set of ranges, returned in a GRanges object not necessarily of the same lenght.
+
++ reduce()
++ intersection()
++ union()
+
+## GRanges reduce() {.codefont}
+```{r}
+gr.b2 = reduce(gr.b)
+```
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+gr.plot(gr.abc, main="original")
+gr.plot(c(gr.a, gr.b2, gr.c),main="reduce(gr.b)")
+```
+
+## GRanges reduce() {.codefont}
+```{r}
+gr.ab = reduce(c(gr.a,gr.b))
+```
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+gr.plot(gr.abc, main="original")
+gr.plot(c(gr.ab,gr.c),main="reduce(c(gr.a, gr.b))")
+```
+
+## GRanges reduce() {.codefont}
+```{r}
+gr.ab = reduce(c(gr.a,gr.b),ignore.strand=TRUE)
+```
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+gr.plot(gr.abc, main="original")
+gr.plot(c(gr.ab,gr.c),main="reduce(c(gr.a, gr.b),\n ignore.strand = TRUE)")
+```
+
+## Intersect of 2 GRanges{.codefont}
+```{r,message=FALSE}
+gr.inter.ab = intersect(gr.a,gr.b)
+```
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+gr.plot(gr.abc, main = "original")
+gr.plot(c(gr.inter.ab, gr.c), xlim = c(50,380), main="intersect(gr.a, gr.b)")
+```
+
+## Intersect of 2 GRanges{.codefont}
+```{r,message=FALSE}
+gr.inter.ab = intersect(gr.a,gr.b,ignore.strand = TRUE)
+```
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+gr.plot(gr.abc, main = "original")
+gr.plot(c(gr.inter.ab, gr.c), xlim = c(50,380),main="intersect(gr.a, gr.b,\n ignore.strand==TRUE")
+par(mfrow=c(1,1))
+```
+
+## Union of 2 GRanges {.codefont}
+```{r}
+gr.ab = union(gr.a,gr.b)
+```
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+gr.plot(gr.abc, main="original")
+gr.plot(c(gr.ab,gr.c),main="union(gr.a, gr.b)")
+```
+
+## Finding overlapping GRanges{.codefont}
+```{r}
+overlapsAny(gr.b, gr.c) 
+overlapsAny(gr.b, gr.c,ignore.strand=TRUE) 
+```
+
+## Finding overlapping GRanges{.codefont}
+```{r}
+gr.window = GRanges("seq1",IRanges(175,300),"*")
+gr.overlapped = gr.abc[ overlapsAny(gr.abc, gr.window) ] 
+```
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+gr.plot(c(gr.window, gr.abc)); abline(v=c(175,300))
+gr.plot(c(gr.window, gr.overlapped), xlim =c(50,max(end(gr.abc))), main="gr.overlapped") 
+abline(v=c(175,300))
+```
+
+## coverage() function
+```{r}
+cov = coverage(gr.abc)
+cov
+```
+
+## coverage() function
+```{r,eval = FALSE}
+plot(cov$seq1, type='l', lwd=2, main = "coverage gr.abc")
+```
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+gr.plot(gr.abc)
+plot(cov$seq1, type='l', lwd=2, main = "coverage gr.abc")
+```
+
+
+## A simple function to read GRanges from MACS output file
+```{r}
+load_peak_file = function(file,header=FALSE){
+  peaks.df <-read.delim(file,header=header, comment.char="#",
+                        stringsAsFactors = FALSE)
+  if(sum(grepl(pattern = "chr",peaks.df[,1]))==0){ 
+    peaks.df[,1]=paste("chr",peaks.df[,1],sep="")
+  }
+  peaks=GRanges(seqnames=peaks.df[,1],ranges=IRanges(peaks.df[,2], peaks.df[,3])) 
+  if (ncol(peaks.df) > 3) { 
+      mcols(peaks) <- peaks.df[, 4:ncol(peaks.df)] 
+  }
+  peaks$filename = basename(file)
+  peaks 
+}
+```
+
+## Loading some real data (H3K4me3 peaks from ENCODE){.codefont}
+```{r}
+gr.H3K4me3 = load_peak_file("DATA/E116-H3K4me3.narrowPeak")
+head(gr.H3K4me3, n=3)
+```
+
+## GRangesList object{.codefont}
+```{r}
+grl = split(gr.H3K4me3, seqnames(gr.H3K4me3))
+names(grl)
+grl$chr1
+```
+
+## Plotting peak distribution on chr1
+```{r}
+hist(start(grl$chr1),breaks=200,col="grey",
+     xlab="chr1",main="peak distribution")
+```
+
+## Example with RNAseq data
+
+Adapted from "An Introduction to Genomic Ranges Classes" available at https://bioconductor.org/
+
+ + Read a bam file 
+ + Load gene annotation
+ + Get the read counts by gene
+ + Plot read coverage for a specific gene
+ + Get the number of reads supporting splice junctions
+ 
+## Load appropriate packages
+
+```{r, warning = FALSE, message=FALSE}
+
+#Class for handling genomic alignments
+library(GenomicAlignments) 
+
+#Gene annotations for Dmelanogaster
+library(TxDb.Dmelanogaster.UCSC.dm3.ensGene) 
+
+#An RNAseq dataset
+library(pasillaBamSubset) 
+
+```
+
+## Loading a BAM file as a GAlignements object
+```{r}
+
+# Path to the example BAM
+un1 <- untreated1_chr4() 
+
+gr.gal <- readGAlignments(un1) #Reading the BAM file
+
+head(gr.gal,n=3) #Look at the first 3 alignments
+```
+
+## Extracting gene models 
+```{r}
+
+#Get a GRangesList containig the exons for each gene 
+exbygene <- exonsBy(TxDb.Dmelanogaster.UCSC.dm3.ensGene, "gene")
+
+exbygene
+```
+
+
+## Get the read counts by gene 
+```{r}
+
+# This function performs similarly to HTSeq-count
+se <- summarizeOverlaps(exbygene, un1, mode="IntersectionNotEmpty")
+
+# Extract count matrix from se object
+counts = assays(se)$counts 
+
+head(counts) #===> Ready for edgeR or DESeq analysis
+```
+
+
+## Get the gene model of a gene of interest
+```{r}
+
+# Lets take the one with the maximum number of counts
+counts[which.max(counts[,1]),,drop=FALSE] # Well this is R...
+
+# Get its gene model (list of exons)
+gr.exons = exbygene[["FBgn0017545"]]
+
+gr.exons
+```
+
+## Define a gene region for plotting purpose
+```{r}
+
+#Define the gene region
+gr.gene = range(gr.exons) # min & max coordinate as a GRanges
+
+#Define the exonic region
+gr.exonic = reduce(gr.exons) #All the positions covered by at lest one exon
+```
+
+## Get the coverage for that region
+```{r}
+gr.cov = as(coverage(gr.gal),"GRanges") #Coerce Rle to GRanges
+
+gr.cov = gr.cov[overlapsAny(gr.cov, gr.gene)] #Keep gene region
+```
+
+## Plot coverage & exonic region
+```{r}
+plot(start(gr.cov),gr.cov$score,type='l',lwd=5,xlab="chr4",ylab="coverage",col="grey")
+rect(start(gr.exonic),-200,end(gr.exonic),200,col="lightgreen",lwd=3)
+```
+
+##Get the number of reads supporting splice junctions
+```{r}
+gr.junc = summarizeJunctions(gr.gal)
+gr.sel.junc = gr.junc[overlapsAny(gr.junc, gr.gene)]
+gr.junc # A GRanges
+```
+
+## Last plot
+```{r,echo=FALSE}
+plot(start(gr.cov),gr.cov$score,type='l',lwd=5,xlab="chr4",ylab="coverage",col="grey")
+rect(start(gr.exonic),-200,end(gr.exonic),200,col="lightgreen",lwd=3)
+points(start(gr.junc),gr.junc$score,pch=19,col="red")
+points(end(gr.junc),gr.junc$score,pch=19,col="red")
+legend("topleft",fill=c("grey","lightgreen","red"),
+       legend = c("coverage","exonic regions","junction scores"))
+```
+
+## Time for Knitr ?
+
+*knitr in a knutshell*, a very nice tutorial by Karl Broman
+
+http://kbroman.org/knitr_knutshell
+
+

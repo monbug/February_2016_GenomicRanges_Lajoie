@@ -1,0 +1,90 @@
+---
+title: "MonBUG presentation (practical stuff)"
+author: "Mathieu.Lajoie@gmail.com"
+date: "Febuary 3, 2016"
+output:
+  ioslides_presentation:
+    css: monbug.css
+  slidy_presentation: default
+---
+
+```{r,include=FALSE}
+  library(DT)
+  setwd("/Users/lajoimat/Projects/GIT/lajoie_sinnett_lab/MonBug/")
+```
+
+## Using serialization to save your data and intermediate results
+
+Serialization is the process of translating data structures or object states into a stream of bytes so that it can be stored or transmitted and eventually reconstructed
+
++ Faster loading time
++ Smaller file size
++ No more time wasted on parsing headers and figuring out what was the field separator
+
+## Example: ENCODE peak file for GM12878 H3K4me3
+```{r}
+peak_file = "DATA/E116-H3K4me3.narrowPeak"
+df.peaks = read.table(peak_file)
+```
+```{r,echo=FALSE}
+# File size (MB)
+size= signif(file.size("DATA/E116-H3K4me3.narrowPeak")/1.05e6,digits=3)
+print(paste("File size:",size,"MB"))
+```
+
+## Saving it using saveRDS()
+Without compression
+```{r}
+saveRDS(df.peaks,"DATA/E116-H3K4me3.narrowPeak.rds")
+```
+```{r,echo=FALSE}
+# File size (MB)
+size= signif(file.size("DATA/E116-H3K4me3.narrowPeak.rds")/1.05e6,digits=3)
+print(paste("File size:",size,"MB"))
+```
+
+With bzip2 compression (smaller but takes more time)
+```{r}
+saveRDS(df.peaks,"DATA/E116-H3K4me3.narrowPeak.rds",compress = "bzip2")
+```
+```{r,echo=FALSE}
+# File size (MB)
+size= signif(file.size("DATA/E116-H3K4me3.narrowPeak.rds")/1.05e6,digits=3)
+print(paste("File size:",size,"MB"))
+```
+
+## Benchmarking
+```{r}
+library(rbenchmark)
+benchmark(replications=rep(10),
+           loading_from_txt = read.table(peak_file),
+           loading_from_rds = readRDS("DATA/E116-H3K4me3.narrowPeak.rds"),
+           columns=c('test', 'elapsed', 'replications'))
+```
+
+## Copy/Paste data in R {.codefont}
+If you need to put data from an R table or vector into a spreadsheet or web form (for example gene identifiers), you can copy/paste directly in R (MacOSX/Linux version)
+
+```{r}
+
+write.clipboard <- function(x,row.names=FALSE,col.names=TRUE) {
+  write.table(x,pipe("pbcopy"),sep="\t",row.names = row.names,col.names = col.names)
+}
+
+write.clipboard(df.peaks) # Example usage
+```
+```{r}
+read.clipboard <- function(header = FALSE,row.names = NULL){
+  read.table(pipe("pbpaste"), sep="\t", header = header, row.names = row.names)
+}
+
+df.new = read.clipboard() # Example usage
+```
+
+## DT package
+
+```{r,message=FALSE,warning=FALSE}
+library(DT)
+datatable(df.peaks[1:500,1:6])
+```
+
